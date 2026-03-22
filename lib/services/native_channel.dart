@@ -119,6 +119,46 @@ class NativeChannel {
         e.map((k, v) => MapEntry(k.toString(), v))).toList();
   }
 
+  // ==================== DEEP NETWORK ANALYSIS ====================
+
+  static Future<List<Map<String, dynamic>>> getArpTable() async {
+    final List<dynamic> result =
+        await _channel.invokeMethod('getArpTable');
+    return result.cast<Map<dynamic, dynamic>>().map((e) =>
+        e.map((k, v) => MapEntry(k.toString(), v))).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> getDnsServers() async {
+    final List<dynamic> result =
+        await _channel.invokeMethod('getDnsServers');
+    return result.cast<Map<dynamic, dynamic>>().map((e) =>
+        e.map((k, v) => MapEntry(k.toString(), v))).toList();
+  }
+
+  static Future<String> reverseDnsLookup(String ip) async {
+    return await _channel.invokeMethod('reverseDnsLookup', {'ip': ip}) as String;
+  }
+
+  static Future<List<Map<String, dynamic>>> getConnectionsWithHostnames() async {
+    final List<dynamic> result =
+        await _channel.invokeMethod('getConnectionsWithHostnames');
+    return result.cast<Map<dynamic, dynamic>>().map((e) =>
+        e.map((k, v) => MapEntry(k.toString(), v))).toList();
+  }
+
+  static Future<Map<String, dynamic>> getIptablesRules() async {
+    final Map<dynamic, dynamic> result =
+        await _channel.invokeMethod('getIptablesRules');
+    return result.map((k, v) => MapEntry(k.toString(), v));
+  }
+
+  static Future<List<Map<String, dynamic>>> getDnsCache() async {
+    final List<dynamic> result =
+        await _channel.invokeMethod('getDnsCache');
+    return result.cast<Map<dynamic, dynamic>>().map((e) =>
+        e.map((k, v) => MapEntry(k.toString(), v))).toList();
+  }
+
   // ==================== SECURITY ====================
 
   static Future<List<Map<String, dynamic>>> getSideloadedApps() async {

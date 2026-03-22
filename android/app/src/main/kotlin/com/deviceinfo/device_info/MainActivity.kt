@@ -30,6 +30,7 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.FileReader
 import java.io.InputStreamReader
+import java.net.InetAddress
 import java.net.NetworkInterface
 
 class MainActivity : FlutterActivity() {
@@ -66,6 +67,27 @@ class MainActivity : FlutterActivity() {
                 "getWifiDetails" -> result.success(getWifiDetails())
                 "getBluetoothDevices" -> result.success(getBluetoothDevices())
                 "getNetworkInterfaces" -> result.success(getNetworkInterfaces())
+                "getArpTable" -> result.success(getArpTable())
+                "getDnsServers" -> result.success(getDnsServers())
+                "reverseDnsLookup" -> {
+                    val ip = call.argument<String>("ip")
+                    if (ip != null) {
+                        Thread {
+                            val hostname = reverseDnsLookup(ip)
+                            runOnUiThread { result.success(hostname) }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "IP is required", null)
+                    }
+                }
+                "getConnectionsWithHostnames" -> {
+                    Thread {
+                        val conns = getConnectionsWithHostnames()
+                        runOnUiThread { result.success(conns) }
+                    }.start()
+                }
+                "getIptablesRules" -> result.success(getIptablesRules())
+                "getDnsCache" -> result.success(getDnsCache())
                 // New: Security
                 "getSideloadedApps" -> result.success(getSideloadedApps())
                 "getRootStatus" -> result.success(getRootStatus())
@@ -496,6 +518,185 @@ class MainActivity : FlutterActivity() {
             }
         } catch (_: Exception) {}
         return interfaces
+    }
+
+    // ==================== DEEP NETWORK ANALYSIS ====================
+
+    private fun getArpTable(): List<Map<String, String>> {
+        val entries = mutableListOf<Map<String, String>>()
+        try {
+            val file = File("/proc/net/arp")
+            if (file.exists()) {
+                val reader = BufferedReader(FileReader(file))
+                reader.readLine() // skip header
+                var line = reader.readLine()
+                while (line != null) {
+                    val parts = line.trim().split("\\s+".toRegex())
+                    if (parts.size >= 6) {
+                        val ip = parts[0]
+                        val hwType = parts[1]
+                        val flags = parts[2]
+                        val mac = parts[3]
+                        val iface = parts[5]
+                        if (mac != "00:00:00:00:00:00" && flags != "0x0") {
+                            entries.add(mapOf(
+                                "ip" to ip,
+                                "mac" to mac,
+                                "interface" to iface,
+                                "flags" to flags,
+                                "hwType" to hwType
+                            ))
+                        }
+                    }
+                    line = reader.readLine()
+                }
+                reader.close()
+            }
+        } catch (_: Exception) {}
+        return entries
+    }
+
+    private fun getDnsServers(): List<Map<String, String>> {
+        val servers = mutableListOf<Map<String, String>>()
+        // From connectivity manager (modern Android)
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val network = cm.activeNetwork
+            if (network != null) {
+                val linkProps = cm.getLinkProperties(network)
+                if (linkProps != null) {
+                    for (dns in linkProps.dnsServers) {
+                        servers.add(mapOf(
+                            "address" to (dns.hostAddress ?: ""),
+                            "source" to "Systeem (${linkProps.interfaceName ?: ""})"
+                        ))
+                    }
+                    // Private DNS
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        val privateDns = linkProps.privateDnsServerName
+                        if (privateDns != null) {
+                            servers.add(mapOf(
+                                "address" to privateDns,
+                                "source" to "Private DNS"
+                            ))
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        // Fallback: read from getprop
+        if (servers.isEmpty()) {
+            for (i in 1..4) {
+                try {
+                    val process = Runtime.getRuntime().exec("getprop net.dns$i")
+                    val reader = BufferedReader(InputStreamReader(process.inputStream))
+                    val dns = reader.readLine()?.trim() ?: ""
+                    reader.close()
+                    if (dns.isNotEmpty()) {
+                        servers.add(mapOf(
+                            "address" to dns,
+                            "source" to "net.dns$i"
+                        ))
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+        return servers
+    }
+
+    private fun reverseDnsLookup(ip: String): String {
+        return try {
+            val addr = InetAddress.getByName(ip)
+            val hostname = addr.canonicalHostName
+            if (hostname != ip) hostname else ""
+        } catch (_: Exception) { "" }
+    }
+
+    private fun getConnectionsWithHostnames(): List<Map<String, Any>> {
+        val connections = getActiveConnections()
+        val enriched = mutableListOf<Map<String, Any>>()
+        for (conn in connections) {
+            val remoteIp = conn["remoteIp"] as? String ?: ""
+            val hostname = if (remoteIp.isNotEmpty() && remoteIp != "0.0.0.0" && remoteIp != "127.0.0.1") {
+                reverseDnsLookup(remoteIp)
+            } else ""
+            val entry = conn.toMutableMap()
+            entry["hostname"] = hostname
+            enriched.add(entry)
+        }
+        return enriched
+    }
+
+    private fun getIptablesRules(): Map<String, Any> {
+        val result = mutableMapOf<String, Any>()
+        val chains = mutableListOf<Map<String, Any>>()
+        // Try to read iptables (requires root)
+        try {
+            val process = Runtime.getRuntime().exec("iptables -L -n --line-numbers")
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            val errorReader = BufferedReader(InputStreamReader(process.errorStream))
+            val lines = mutableListOf<String>()
+            var line = reader.readLine()
+            while (line != null) {
+                lines.add(line)
+                line = reader.readLine()
+            }
+            reader.close()
+            val error = errorReader.readText()
+            errorReader.close()
+
+            if (error.isNotEmpty()) {
+                result["hasAccess"] = false
+                result["error"] = "Root vereist voor iptables"
+            } else {
+                result["hasAccess"] = true
+                var currentChain = ""
+                val rules = mutableListOf<String>()
+                for (l in lines) {
+                    if (l.startsWith("Chain ")) {
+                        if (currentChain.isNotEmpty() && rules.isNotEmpty()) {
+                            chains.add(mapOf("chain" to currentChain, "rules" to rules.toList()))
+                            rules.clear()
+                        }
+                        currentChain = l
+                    } else if (l.isNotEmpty() && !l.startsWith("num")) {
+                        rules.add(l)
+                    }
+                }
+                if (currentChain.isNotEmpty() && rules.isNotEmpty()) {
+                    chains.add(mapOf("chain" to currentChain, "rules" to rules.toList()))
+                }
+            }
+        } catch (e: Exception) {
+            result["hasAccess"] = false
+            result["error"] = e.message ?: "Onbekende fout"
+        }
+        result["chains"] = chains
+        return result
+    }
+
+    private fun getDnsCache(): List<Map<String, String>> {
+        val entries = mutableListOf<Map<String, String>>()
+        // Try to read DNS cache via getprop
+        try {
+            val process = Runtime.getRuntime().exec("getprop")
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            var line = reader.readLine()
+            while (line != null) {
+                if (line.contains("net.dns") || line.contains("dhcp") && line.contains("dns")) {
+                    val parts = line.split(":")
+                    if (parts.size == 2) {
+                        entries.add(mapOf(
+                            "property" to parts[0].trim().replace("[", "").replace("]", ""),
+                            "value" to parts[1].trim().replace("[", "").replace("]", "")
+                        ))
+                    }
+                }
+                line = reader.readLine()
+            }
+            reader.close()
+        } catch (_: Exception) {}
+        return entries
     }
 
     // ==================== SECURITY ====================

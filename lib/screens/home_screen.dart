@@ -34,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _vpnActive = false;
   int _openPortCount = 0;
   int _connectionCount = 0;
+  int _arpDeviceCount = 0;
   int _sensorCount = 0;
   String _ramUsage = '';
   bool _loading = true;
@@ -63,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
         NativeChannel.getActiveConnections(),                                     // 13
         NativeChannel.getSensorList(),                                            // 14
         NativeChannel.getRamInfo(),                                               // 15
+        NativeChannel.getArpTable(),                                              // 16
       ]);
 
       if (mounted) {
@@ -92,6 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _connectionCount = (results[13] as List).length;
           _sensorCount = (results[14] as List).length;
           _ramUsage = '$pct% gebruikt';
+          _arpDeviceCount = (results[16] as List).length;
           _loading = false;
         });
       }
@@ -154,10 +157,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   StatusCard(
                     title: 'Netwerk & WiFi',
                     subtitle:
-                        '$_connectionCount verbindingen - $_openPortCount poorten - VPN: ${_vpnActive ? "Actief" : "Uit"}',
+                        '$_connectionCount verbindingen - $_openPortCount poorten - $_arpDeviceCount apparaten',
                     icon: Icons.wifi,
                     iconColor: _vpnActive ? Colors.green : null,
                     onTap: () => _push(const NetworkScreen()),
+                    trailing: _vpnActive
+                        ? Chip(
+                            label: const Text('VPN'),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            backgroundColor: Colors.green.shade100,
+                          )
+                        : null,
                   ),
                   const SizedBox(height: 16),
 
