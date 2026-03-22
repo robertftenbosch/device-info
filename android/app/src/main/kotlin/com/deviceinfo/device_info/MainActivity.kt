@@ -3,7 +3,9 @@ package com.deviceinfo.device_info
 import android.app.ActivityManager
 import android.app.AppOpsManager
 import android.app.admin.DevicePolicyManager
+import android.app.usage.NetworkStatsManager
 import android.app.usage.UsageStatsManager
+import android.content.ComponentName
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.Context
@@ -16,6 +18,7 @@ import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.TrafficStats
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Build
@@ -88,6 +91,11 @@ class MainActivity : FlutterActivity() {
                 }
                 "getIptablesRules" -> result.success(getIptablesRules())
                 "getDnsCache" -> result.success(getDnsCache())
+                // Notifications & Data Usage
+                "getNotificationLog" -> result.success(getNotificationLog())
+                "hasNotificationAccess" -> result.success(hasNotificationAccess())
+                "openNotificationSettings" -> { openNotificationSettings(); result.success(true) }
+                "getAppDataUsage" -> result.success(getAppDataUsage())
                 // New: Security
                 "getSideloadedApps" -> result.success(getSideloadedApps())
                 "getRootStatus" -> result.success(getRootStatus())
@@ -697,6 +705,55 @@ class MainActivity : FlutterActivity() {
             reader.close()
         } catch (_: Exception) {}
         return entries
+    }
+
+    // ==================== NOTIFICATIONS & DATA USAGE ====================
+
+    private fun getNotificationLog(): List<Map<String, Any>> {
+        synchronized(NotificationService.notificationLog) {
+            return NotificationService.notificationLog.toList()
+        }
+    }
+
+    private fun hasNotificationAccess(): Boolean {
+        val cn = ComponentName(this, NotificationService::class.java)
+        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+        return flat != null && flat.contains(cn.flattenToString())
+    }
+
+    private fun openNotificationSettings() {
+        startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
+    }
+
+    private fun getAppDataUsage(): List<Map<String, Any>> {
+        val apps = mutableListOf<Map<String, Any>>()
+        val pm = packageManager
+        val installedPackages = pm.getInstalledPackages(0)
+
+        for (pkg in installedPackages) {
+            val appInfo = pkg.applicationInfo ?: continue
+            val uid = appInfo.uid
+            val txBytes = TrafficStats.getUidTxBytes(uid)
+            val rxBytes = TrafficStats.getUidRxBytes(uid)
+
+            // Only include apps with some traffic
+            if (txBytes > 0 || rxBytes > 0) {
+                val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                apps.add(mapOf(
+                    "packageName" to pkg.packageName,
+                    "appName" to pm.getApplicationLabel(appInfo).toString(),
+                    "isSystemApp" to isSystemApp,
+                    "txBytes" to txBytes,
+                    "rxBytes" to rxBytes,
+                    "totalBytes" to (txBytes + rxBytes),
+                    "uid" to uid
+                ))
+            }
+        }
+
+        return apps.sortedByDescending { it["txBytes"] as Long }
     }
 
     // ==================== SECURITY ====================

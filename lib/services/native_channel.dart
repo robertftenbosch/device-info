@@ -119,6 +119,30 @@ class NativeChannel {
         e.map((k, v) => MapEntry(k.toString(), v))).toList();
   }
 
+  // ==================== NOTIFICATIONS & DATA USAGE ====================
+
+  static Future<List<Map<String, dynamic>>> getNotificationLog() async {
+    final List<dynamic> result =
+        await _channel.invokeMethod('getNotificationLog');
+    return result.cast<Map<dynamic, dynamic>>().map((e) =>
+        e.map((k, v) => MapEntry(k.toString(), v))).toList();
+  }
+
+  static Future<bool> hasNotificationAccess() async {
+    return await _channel.invokeMethod('hasNotificationAccess') as bool;
+  }
+
+  static Future<void> openNotificationSettings() async {
+    await _channel.invokeMethod('openNotificationSettings');
+  }
+
+  static Future<List<Map<String, dynamic>>> getAppDataUsage() async {
+    final List<dynamic> result =
+        await _channel.invokeMethod('getAppDataUsage');
+    return result.cast<Map<dynamic, dynamic>>().map((e) =>
+        e.map((k, v) => MapEntry(k.toString(), v))).toList();
+  }
+
   // ==================== DEEP NETWORK ANALYSIS ====================
 
   static Future<List<Map<String, dynamic>>> getArpTable() async {

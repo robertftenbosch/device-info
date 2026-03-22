@@ -10,6 +10,8 @@ import 'permissions_screen.dart';
 import 'network_screen.dart';
 import 'security_screen.dart';
 import 'hardware_screen.dart';
+import 'notifications_screen.dart';
+import 'data_usage_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -37,6 +39,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _arpDeviceCount = 0;
   int _sensorCount = 0;
   String _ramUsage = '';
+  bool _hasNotifAccess = false;
+  int _dataUsageAppCount = 0;
   bool _loading = true;
 
   @override
@@ -65,6 +69,8 @@ class _HomeScreenState extends State<HomeScreen> {
         NativeChannel.getSensorList(),                                            // 14
         NativeChannel.getRamInfo(),                                               // 15
         NativeChannel.getArpTable(),                                              // 16
+        NativeChannel.hasNotificationAccess(),                                    // 17
+        NativeChannel.getAppDataUsage(),                                          // 18
       ]);
 
       if (mounted) {
@@ -95,6 +101,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _sensorCount = (results[14] as List).length;
           _ramUsage = '$pct% gebruikt';
           _arpDeviceCount = (results[16] as List).length;
+          _hasNotifAccess = results[17] as bool;
+          _dataUsageAppCount = (results[18] as List).length;
           _loading = false;
         });
       }
@@ -149,6 +157,22 @@ class _HomeScreenState extends State<HomeScreen> {
                         '$_locationAppCount locatie - $_overlayAppCount overlay - $_accessibilityCount a11y',
                     icon: Icons.shield,
                     onTap: () => _push(const PermissionsScreen()),
+                  ),
+                  StatusCard(
+                    title: 'Notificaties',
+                    subtitle: _hasNotifAccess
+                        ? 'Monitoring actief - tik om log te bekijken'
+                        : 'Tik om notificatie-monitoring in te schakelen',
+                    icon: Icons.notifications,
+                    iconColor: _hasNotifAccess ? Colors.green : Colors.orange,
+                    onTap: () => _push(const NotificationsScreen()),
+                  ),
+                  StatusCard(
+                    title: 'Data Verbruik',
+                    subtitle:
+                        '$_dataUsageAppCount apps met netwerkverkeer',
+                    icon: Icons.cloud_upload,
+                    onTap: () => _push(const DataUsageScreen()),
                   ),
                   const SizedBox(height: 16),
 
