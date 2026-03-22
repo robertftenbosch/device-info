@@ -433,7 +433,7 @@ class MainActivity : FlutterActivity() {
             "ssid" to (info?.ssid?.replace("\"", "") ?: "Onbekend"),
             "bssid" to (info?.bssid ?: "Onbekend"),
             "rssi" to (info?.rssi ?: 0),
-            "linkSpeed" to (info?.linkSpeedMbps ?: 0),
+            "linkSpeed" to (info?.linkSpeed ?: 0),
             "frequency" to (info?.frequency ?: 0),
             "ipAddress" to intToIp(info?.ipAddress ?: 0),
             "gateway" to intToIp(dhcp?.gateway ?: 0),
